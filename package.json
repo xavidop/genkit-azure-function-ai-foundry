@@ -1,0 +1,38 @@
+{
+  "name": "genkit-azure-function-ai-foundry",
+  "version": "1.0.0",
+  "description": "Azure Function with Genkit and Azure OpenAI for AI generation",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "watch": "tsc -w",
+    "genkit:ui": "genkit start -- tsx --watch src/index.ts",
+    "prestart": "npm run build",
+    "func:start": "func start",
+    "func:build": "npm run build && func extensions install",
+    "deploy": "func azure functionapp publish <YOUR_FUNCTION_APP_NAME> --build remote"
+  },
+  "keywords": [
+    "genkit",
+    "azure",
+    "azure-functions",
+    "azure-openai",
+    "ai",
+    "generative-ai"
+  ],
+  "author": "Xavier Portilla Edo",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@azure/functions": "^4.11.0",
+    "dotenv": "^17.2.3",
+    "genkit": "^1.27.0",
+    "genkitx-azure-openai": "^0.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "azure-functions-core-tools": "^4.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
