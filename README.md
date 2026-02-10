@@ -1,6 +1,6 @@
 # Genkit Azure Function with Azure OpenAI
 
-An Azure Function powered by [Firebase Genkit](https://genkit.dev/) and the [Azure OpenAI plugin](https://github.com/BloomLabsInc/genkit-plugins/tree/main/plugins/azure-openai) for AI-powered story generation.
+An Azure Function powered by [Genkit](https://genkit.dev/) and the [Azure OpenAI plugin](https://github.com/BloomLabsInc/genkit-plugins/tree/main/plugins/azure-openai) for AI-powered story generation.
 
 ## Prerequisites
 
@@ -332,7 +332,7 @@ const ai = genkit({
 
 ## Learn More
 
-- [Firebase Genkit Documentation](https://genkit.dev/docs/)
+- [Genkit Documentation](https://genkit.dev/docs/)
 - [Azure OpenAI Plugin](https://github.com/BloomLabsInc/genkit-plugins/tree/main/plugins/azure-openai)
 - [Azure Functions Documentation](https://docs.microsoft.com/azure/azure-functions/)
 - [Azure OpenAI Service](https://azure.microsoft.com/services/cognitive-services/openai-service/)
