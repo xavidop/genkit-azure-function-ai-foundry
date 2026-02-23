@@ -1,6 +1,10 @@
-import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { genkit, z } from 'genkit';
-import { azureOpenAI, gpt4o } from 'genkitx-azure-openai';
+import {
+  azureOpenAI,
+  gpt4o,
+  onCallGenkit,
+  requireApiKey,
+} from 'genkitx-azure-openai';
 import * as dotenv from 'dotenv';
 
 // Load environment variables from .env file (for local development)
@@ -36,7 +40,7 @@ const StorySchema = z.object({
 });
 
 // Define a story generator flow
-export const storyGeneratorFlow = ai.defineFlow(
+const storyGeneratorFlow = ai.defineFlow(
   {
     name: 'storyGeneratorFlow',
     inputSchema: StoryInputSchema,
@@ -74,66 +78,123 @@ export const storyGeneratorFlow = ai.defineFlow(
   }
 );
 
-// Azure Function HTTP trigger handler
-export async function httpTrigger(
-  request: HttpRequest,
-  context: InvocationContext
-): Promise<HttpResponseInit> {
-  context.log('HTTP trigger function processed a request.');
-  context.log('Request:', {
-    url: request.url,
-    method: request.method,
-  });
+// Register the story generator flow as an Azure Function HTTP trigger using onCallGenkit
+export const storyGeneratorHandler = onCallGenkit(
+  {
+    cors: { origin: '*' },
+    debug: process.env.NODE_ENV !== 'production',
+  },
+  storyGeneratorFlow
+);
 
-  try {
-    // Parse request body
-    const body = await request.json().catch(() => ({})) as any;
-
-    // Validate and set defaults
-    const input = {
-      topic: body.topic || 'a brave explorer on an alien planet',
-      style: body.style || 'adventure',
-      length: (body.length as 'short' | 'medium' | 'long') || 'medium',
-    };
-
-    context.log('Generating story with input:', input);
-
-    // Call the Genkit flow
-    const story = await storyGeneratorFlow(input);
-
-    context.log('Story generated successfully');
-
-    // Return success response
-    return {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      jsonBody: {
-        success: true,
-        data: story,
-      },
-    };
-  } catch (error) {
-    context.error('Error generating story:', error);
-
-    return {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      jsonBody: {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-      },
-    };
-  }
-}
-
-// Register the HTTP trigger
-app.http('storyGenerator', {
-  methods: ['POST'],
-  authLevel: 'anonymous',
-  route: 'generate',
-  handler: httpTrigger,
+// Define a joke flow
+const JokeInputSchema = z.object({
+  subject: z.string().describe('The subject for the joke'),
 });
+
+const JokeOutputSchema = z.object({
+  joke: z.string(),
+});
+
+const jokeFlow = ai.defineFlow(
+  {
+    name: 'jokeFlow',
+    inputSchema: JokeInputSchema,
+    outputSchema: JokeOutputSchema,
+  },
+  async (input) => {
+    const { output } = await ai.generate({
+      prompt: `Tell me a funny joke about ${input.subject}`,
+      output: { schema: JokeOutputSchema },
+    });
+
+    if (!output) {
+      throw new Error('Failed to generate joke');
+    }
+
+    return output;
+  }
+);
+
+// Register the joke flow as an Azure Function (simplest form)
+export const jokeHandler = onCallGenkit(jokeFlow);
+
+// Define a streaming joke flow
+const jokeStreamingFlow = ai.defineFlow(
+  {
+    name: 'jokeStreamingFlow',
+    inputSchema: JokeInputSchema,
+    outputSchema: JokeOutputSchema,
+    streamSchema: z.string(),
+  },
+  async (input, { sendChunk }) => {
+    const { stream, response } = await ai.generateStream({
+      prompt: `Tell me a long and funny joke about ${input.subject}`,
+    });
+
+    for await (const chunk of stream) {
+      sendChunk(chunk.text);
+    }
+
+    const result = await response;
+    return { joke: result.text };
+  }
+);
+
+// Register the streaming joke flow with SSE support
+export const jokeStreamHandler = onCallGenkit(
+  { streaming: true, cors: { origin: '*' } },
+  jokeStreamingFlow
+);
+
+// Define a protected summary flow with API key authentication
+const SummaryInputSchema = z.object({
+  text: z.string().describe('Text to summarize'),
+  maxLength: z.number().optional().describe('Maximum summary length in words'),
+});
+
+const SummaryOutputSchema = z.object({
+  summary: z.string(),
+  originalLength: z.number(),
+  summaryLength: z.number(),
+});
+
+const protectedSummaryFlow = ai.defineFlow(
+  {
+    name: 'protectedSummaryFlow',
+    inputSchema: SummaryInputSchema,
+    outputSchema: SummaryOutputSchema,
+  },
+  async (input) => {
+    const maxLen = input.maxLength || 100;
+    const { output } = await ai.generate({
+      prompt: `Summarize the following text in at most ${maxLen} words:\n\n${input.text}`,
+      output: { schema: SummaryOutputSchema },
+    });
+
+    if (!output) {
+      throw new Error('Failed to generate summary');
+    }
+
+    return output;
+  }
+);
+
+// Register the protected summary flow with API key authentication
+export const protectedHandler = onCallGenkit(
+  {
+    contextProvider: requireApiKey(
+      'X-API-Key',
+      process.env.API_KEY || 'demo-api-key'
+    ),
+    cors: {
+      origin: ['https://myapp.com', 'http://localhost:3000'],
+      credentials: true,
+    },
+    onError: async (error) => ({
+      statusCode: error.message.includes('Unauthorized') ? 401 : 500,
+      message: error.message,
+    }),
+  },
+  protectedSummaryFlow
+);

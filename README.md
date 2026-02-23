@@ -1,6 +1,6 @@
 # Genkit Azure Function with Azure OpenAI
 
-An Azure Function powered by [Genkit](https://genkit.dev/) and the [Azure OpenAI plugin](https://github.com/BloomLabsInc/genkit-plugins/tree/main/plugins/azure-openai) for AI-powered story generation.
+An Azure Function powered by [Genkit](https://genkit.dev/) and the [Azure OpenAI plugin](https://github.com/genkit-ai/azure-foundry-js-plugin) for AI-powered generation, using the `onCallGenkit` helper for streamlined Azure Functions integration.
 
 ## Prerequisites
 
@@ -67,12 +67,45 @@ npm run func:start
 This starts a local server at `http://localhost:7071` that mimics the Azure Functions runtime. Test it with:
 
 ```bash
-curl -X POST http://localhost:7071/api/generate \
+# Story generator (with CORS & debug enabled)
+curl -X POST http://localhost:7071/api/storyGeneratorFlow \
   -H "Content-Type: application/json" \
   -d '{
-    "topic": "a robot learning to feel emotions",
-    "style": "sci-fi",
-    "length": "medium"
+    "data": {
+      "topic": "a robot learning to feel emotions",
+      "style": "sci-fi",
+      "length": "medium"
+    }
+  }'
+
+# Joke generator
+curl -X POST http://localhost:7071/api/jokeFlow \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "subject": "programming"
+    }
+  }'
+
+# Streaming joke (SSE)
+curl -X POST http://localhost:7071/api/jokeStreamingFlow \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{
+    "data": {
+      "subject": "TypeScript"
+    }
+  }'
+
+# Protected summary (requires API key)
+curl -X POST http://localhost:7071/api/protectedSummaryFlow \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: demo-api-key" \
+  -d '{
+    "data": {
+      "text": "Your long text here...",
+      "maxLength": 50
+    }
   }'
 ```
 
@@ -92,17 +125,32 @@ This starts the Genkit Developer UI at `http://localhost:4000`. You can:
 
 ## Usage Examples
 
-### Request Format
+### Flows & Endpoints
+
+This sample registers 4 Azure Functions via `onCallGenkit`:
+
+| Flow | Endpoint | Auth | Features |
+|------|----------|------|----------|
+| `storyGeneratorFlow` | `POST /api/storyGeneratorFlow` | anonymous | CORS, debug |
+| `jokeFlow` | `POST /api/jokeFlow` | anonymous | Simplest form |
+| `jokeStreamingFlow` | `POST /api/jokeStreamingFlow` | anonymous | SSE streaming, CORS |
+| `protectedSummaryFlow` | `POST /api/protectedSummaryFlow` | API key (`X-API-Key`) | Auth, CORS, custom error handler |
+
+### Request Format (wrapped in `data`)
+
+All requests use the `genkit/beta/client` protocol — input goes in a `data` envelope:
 
 ```json
 {
-  "topic": "a time traveler discovering an ancient civilization",
-  "style": "mystery",
-  "length": "short"
+  "data": {
+    "topic": "a time traveler discovering an ancient civilization",
+    "style": "mystery",
+    "length": "short"
+  }
 }
 ```
 
-Parameters:
+#### Story Generator Parameters
 
 - `topic` (required): The main theme or topic for the story
 - `style` (optional): Writing style (e.g., "adventure", "mystery", "sci-fi", "romance")
@@ -112,8 +160,7 @@ Parameters:
 
 ```json
 {
-  "success": true,
-  "data": {
+  "result": {
     "title": "Echoes of Atlantis",
     "genre": "Mystery",
     "story": "The full story text...",
@@ -121,6 +168,37 @@ Parameters:
     "themes": ["time travel", "ancient mysteries", "discovery"]
   }
 }
+```
+
+### Using the Genkit Client
+
+You can also use the `genkit/beta/client` SDK to call these endpoints:
+
+```typescript
+import { runFlow, streamFlow } from 'genkit/beta/client';
+
+// Non-streaming
+const result = await runFlow({
+  url: 'http://localhost:7071/api/jokeFlow',
+  input: { subject: 'programming' },
+});
+
+// Streaming
+const result = streamFlow({
+  url: 'http://localhost:7071/api/jokeStreamingFlow',
+  input: { subject: 'TypeScript' },
+});
+for await (const chunk of result.stream) {
+  process.stdout.write(chunk);
+}
+const finalOutput = await result.output;
+
+// With API key auth
+const result = await runFlow({
+  url: 'http://localhost:7071/api/protectedSummaryFlow',
+  input: { text: 'Your long text...', maxLength: 50 },
+  headers: { 'X-API-Key': 'demo-api-key' },
+});
 ```
 
 ## Deployment
@@ -207,12 +285,14 @@ Functions in myFunctionAppName:
 ### Test the Deployed Function
 
 ```bash
-curl -X POST https://myfunctionappname.azurewebsites.net/api/generate \
+curl -X POST https://myfunctionappname.azurewebsites.net/api/storyGeneratorFlow \
   -H "Content-Type: application/json" \
   -d '{
-    "topic": "a robot learning to feel emotions",
-    "style": "sci-fi",
-    "length": "medium"
+    "data": {
+      "topic": "a robot learning to feel emotions",
+      "style": "sci-fi",
+      "length": "medium"
+    }
   }'
 ```
 
@@ -240,7 +320,7 @@ curl -X POST https://myfunctionappname.azurewebsites.net/api/generate \
 Edit `src/index.ts` to use different Azure OpenAI models:
 
 ```typescript
-import { azureOpenAI, gpt4o, gpt35Turbo } from 'genkitx-azure-openai';
+import { azureOpenAI, gpt4o, gpt35Turbo, onCallGenkit } from 'genkitx-azure-openai';
 
 const ai = genkit({
   plugins: [azureOpenAI()],
@@ -333,7 +413,7 @@ const ai = genkit({
 ## Learn More
 
 - [Genkit Documentation](https://genkit.dev/docs/)
-- [Azure OpenAI Plugin](https://github.com/BloomLabsInc/genkit-plugins/tree/main/plugins/azure-openai)
+- [Azure OpenAI Plugin](https://github.com/genkit-ai/azure-foundry-js-plugin)
 - [Azure Functions Documentation](https://docs.microsoft.com/azure/azure-functions/)
 - [Azure OpenAI Service](https://azure.microsoft.com/services/cognitive-services/openai-service/)
 
